@@ -165,7 +165,7 @@ void Pcd2PgmNode::setMapTopicMsg(
   msg.info.origin.orientation.z = 0.0;
   msg.info.origin.orientation.w = 1.0;
 
-  msg.data.assign(width * height, 100);
+  msg.data.assign(width * height, -1);
 
   for (const auto & point : cloud->points) {
     double dx = point.x - x_min;
@@ -178,9 +178,17 @@ void Pcd2PgmNode::setMapTopicMsg(
 
     if (i < width && j < height) {
       size_t index = j * width + i;
-      if (index < msg.data.size()) {
-        msg.data[index] = 0; // 100
-      } else {
+      if (index < msg.data.size() && point.z < 0.0) {
+        // RCLCPP_INFO(get_logger(), "point z: %lf", point.z);
+        if(msg.data[index]!=100){
+          msg.data[index] = 0; 
+        }
+      } 
+      else if(point.z >= 0.0){
+      //   // RCLCPP_INFO(get_logger(), "point z: %lf", point.z);
+         msg.data[index] = 100; 
+      }
+      else {
         RCLCPP_WARN(
           get_logger(),
           "Index out of bounds after safe casting: i=%zu, j=%zu, index=%zu, data.size=%zu",
