@@ -77,3 +77,9 @@ ros2 run nav2_map_server map_saver_cli -f <YOUR_MAP_NAME>
       thre_z_min: 0.1                                                 # Z轴最小值（用于 Pass Through 滤波器）
       thres_point_count: 10                                           # 最小点数阈值（用于 Radius Outlier 滤波器）
   ```
+
+# Change Log
+All notable changes to this repository will be described here.
+
+### Changed - 2025-06-14
+- TBC
