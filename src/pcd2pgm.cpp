@@ -54,6 +54,11 @@ Pcd2PgmNode::Pcd2PgmNode(const rclcpp::NodeOptions & options) : Node("pcd2pgm", 
 
 void Pcd2PgmNode::publishCallback()
 {
+  if (!cloud_after_radius_) {
+    RCLCPP_WARN(get_logger(), "cloud_after_radius_ is nullptr.");
+    return;
+  }
+
   sensor_msgs::msg::PointCloud2 output;
   pcl::toROSMsg(*cloud_after_radius_, output);
   output.header.frame_id = "map";
@@ -95,7 +100,7 @@ void Pcd2PgmNode::passThroughFilter(double thre_low, double thre_high, bool flag
   passthrough.setInputCloud(pcd_cloud_);
   passthrough.setFilterFieldName("z");
   passthrough.setFilterLimits(thre_low, thre_high);
-  passthrough.setNegative(flag_in);
+  passthrough.setNegative(false);
   passthrough.filter(*filtered_cloud);
 
   cloud_after_pass_through_ = filtered_cloud;
@@ -145,6 +150,13 @@ void Pcd2PgmNode::setMapTopicMsg(
     y_max = std::max(y_max, static_cast<double>(point.y));
   }
 
+  // 計算結果が負にならないよう、最小1に制限しつつ size_t に変換
+  size_t width = static_cast<size_t>(std::max(1, static_cast<int>(std::ceil((x_max - x_min) / map_resolution_))));
+  size_t height = static_cast<size_t>(std::max(1, static_cast<int>(std::ceil((y_max - y_min) / map_resolution_))));
+
+  msg.info.width = static_cast<uint32_t>(width);
+  msg.info.height = static_cast<uint32_t>(height);
+
   msg.info.origin.position.x = x_min;
   msg.info.origin.position.y = y_min;
   msg.info.origin.position.z = 0.0;
@@ -153,24 +165,44 @@ void Pcd2PgmNode::setMapTopicMsg(
   msg.info.origin.orientation.z = 0.0;
   msg.info.origin.orientation.w = 1.0;
 
-  msg.info.width = std::ceil((x_max - x_min) / map_resolution_);
-  msg.info.height = std::ceil((y_max - y_min) / map_resolution_);
-  msg.data.assign(msg.info.width * msg.info.height, 0);
+  msg.data.assign(width * height, 100);
 
   for (const auto & point : cloud->points) {
-    int i = std::floor((point.x - x_min) / map_resolution_);
-    int j = std::floor((point.y - y_min) / map_resolution_);
+    double dx = point.x - x_min;
+    double dy = point.y - y_min;
 
-    if (i >= 0 && i < msg.info.width && j >= 0 && j < msg.info.height) {
-      msg.data[i + j * msg.info.width] = 100;
+    if (dx < 0 || dy < 0) continue;
+
+    size_t i = static_cast<size_t>(dx / map_resolution_);
+    size_t j = static_cast<size_t>(dy / map_resolution_);
+
+    if (i < width && j < height) {
+      size_t index = j * width + i;
+      if (index < msg.data.size()) {
+        msg.data[index] = 0; // 100
+      } else {
+        RCLCPP_WARN(
+          get_logger(),
+          "Index out of bounds after safe casting: i=%zu, j=%zu, index=%zu, data.size=%zu",
+          i, j, index, msg.data.size());
+      }
+    } else {
+      RCLCPP_WARN(get_logger(), "Invalid index range: i=%zu, j=%zu (width=%zu, height=%zu)", i, j, width, height);
     }
   }
 
-  RCLCPP_INFO(get_logger(), "Map data size: %lu", msg.data.size());
+  RCLCPP_INFO(get_logger(), "Map width: %u, height: %u", msg.info.width, msg.info.height);
+  RCLCPP_INFO(get_logger(), "Origin: x=%.2f, y=%.2f", x_min, y_min);
+  RCLCPP_INFO(get_logger(), "Map data size: %zu", msg.data.size());
 }
 
 void Pcd2PgmNode::applyTransform()
 {
+  if (odom_to_lidar_odom_.size() != 6) {
+    RCLCPP_ERROR(get_logger(), "Transform parameter 'odom_to_lidar_odom' must have 6 elements.");
+    return;
+  }
+
   Eigen::Affine3f transform = Eigen::Affine3f::Identity();
 
   transform.translation() << odom_to_lidar_odom_[0], odom_to_lidar_odom_[1], odom_to_lidar_odom_[2];
