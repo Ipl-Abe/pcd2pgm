@@ -82,4 +82,6 @@ ros2 run nav2_map_server map_saver_cli -f <YOUR_MAP_NAME>
 All notable changes to this repository will be described here.
 
 ### Changed - 2025-06-14
-- TBC
+- added RCLCPP_WARN in publishCallback() to check whether "cloud_after_radius_" is empty or not.
+- added RCLCPP_WARN in appyTransform() to check whether "odom_to_lidar_odom_.size()" has 6 elements or not.
+- modify setMapTopicMsg()
