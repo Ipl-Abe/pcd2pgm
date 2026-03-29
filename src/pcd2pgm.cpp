@@ -127,9 +127,86 @@ void Pcd2PgmNode::radiusOutlierFilter(
 void Pcd2PgmNode::setMapTopicMsg(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, nav_msgs::msg::OccupancyGrid & msg)
 {
+  // msg.header.stamp = now();
+  // msg.header.frame_id = "map";
+
+  // msg.info.map_load_time = now();
+  // msg.info.resolution = map_resolution_;
+
+  // double x_min = std::numeric_limits<double>::max();
+  // double x_max = std::numeric_limits<double>::lowest();
+  // double y_min = std::numeric_limits<double>::max();
+  // double y_max = std::numeric_limits<double>::lowest();
+
+  // if (cloud->points.empty()) {
+  //   RCLCPP_WARN(get_logger(), "Point cloud is empty!");
+  //   return;
+  // }
+
+  // for (const auto & point : cloud->points) {
+  //   x_min = std::min(x_min, static_cast<double>(point.x));
+  //   x_max = std::max(x_max, static_cast<double>(point.x));
+  //   y_min = std::min(y_min, static_cast<double>(point.y));
+  //   y_max = std::max(y_max, static_cast<double>(point.y));
+  // }
+
+  // // 計算結果が負にならないよう、最小1に制限しつつ size_t に変換
+  // size_t width = static_cast<size_t>(std::max(1, static_cast<int>(std::ceil((x_max - x_min) / map_resolution_))));
+  // size_t height = static_cast<size_t>(std::max(1, static_cast<int>(std::ceil((y_max - y_min) / map_resolution_))));
+
+  // msg.info.width = static_cast<uint32_t>(width);
+  // msg.info.height = static_cast<uint32_t>(height);
+
+  // msg.info.origin.position.x = x_min;
+  // msg.info.origin.position.y = y_min;
+  // msg.info.origin.position.z = 0.0;
+  // msg.info.origin.orientation.x = 0.0;
+  // msg.info.origin.orientation.y = 0.0;
+  // msg.info.origin.orientation.z = 0.0;
+  // msg.info.origin.orientation.w = 1.0;
+
+  // msg.data.assign(width * height, -1);
+
+  // for (const auto & point : cloud->points) {
+  //   double dx = point.x - x_min;
+  //   double dy = point.y - y_min;
+
+  //   if (dx < 0 || dy < 0) continue;
+
+  //   size_t i = static_cast<size_t>(dx / map_resolution_);
+  //   size_t j = static_cast<size_t>(dy / map_resolution_);
+
+  //   if (i < width && j < height) {
+  //     size_t index = j * width + i;
+  //     if (index < msg.data.size() && point.z < 0.0) {
+  //       // RCLCPP_INFO(get_logger(), "point z: %lf", point.z);
+  //       if(msg.data[index]!=100){
+  //         msg.data[index] = 0; 
+  //       }
+  //     } 
+  //     else if(point.z >= 0.0){
+  //     //   // RCLCPP_INFO(get_logger(), "point z: %lf", point.z);
+  //        msg.data[index] = 100; 
+  //     }
+  //     else {
+  //       RCLCPP_WARN(
+  //         get_logger(),
+  //         "Index out of bounds after safe casting: i=%zu, j=%zu, index=%zu, data.size=%zu",
+  //         i, j, index, msg.data.size());
+  //     }
+  //   } else {
+  //     RCLCPP_WARN(get_logger(), "Invalid index range: i=%zu, j=%zu (width=%zu, height=%zu)", i, j, width, height);
+  //   }
+  // }
+
+  // RCLCPP_INFO(get_logger(), "Map width: %u, height: %u", msg.info.width, msg.info.height);
+  // RCLCPP_INFO(get_logger(), "Origin: x=%.2f, y=%.2f", x_min, y_min);
+  // RCLCPP_INFO(get_logger(), "Map data size: %zu", msg.data.size());
+
+
+
   msg.header.stamp = now();
   msg.header.frame_id = "map";
-
   msg.info.map_load_time = now();
   msg.info.resolution = map_resolution_;
 
@@ -143,6 +220,7 @@ void Pcd2PgmNode::setMapTopicMsg(
     return;
   }
 
+  // 1. マップの範囲（境界）を計算
   for (const auto & point : cloud->points) {
     x_min = std::min(x_min, static_cast<double>(point.x));
     x_max = std::max(x_max, static_cast<double>(point.x));
@@ -150,58 +228,71 @@ void Pcd2PgmNode::setMapTopicMsg(
     y_max = std::max(y_max, static_cast<double>(point.y));
   }
 
-  // 計算結果が負にならないよう、最小1に制限しつつ size_t に変換
   size_t width = static_cast<size_t>(std::max(1, static_cast<int>(std::ceil((x_max - x_min) / map_resolution_))));
   size_t height = static_cast<size_t>(std::max(1, static_cast<int>(std::ceil((y_max - y_min) / map_resolution_))));
 
   msg.info.width = static_cast<uint32_t>(width);
   msg.info.height = static_cast<uint32_t>(height);
-
   msg.info.origin.position.x = x_min;
   msg.info.origin.position.y = y_min;
-  msg.info.origin.position.z = 0.0;
-  msg.info.origin.orientation.x = 0.0;
-  msg.info.origin.orientation.y = 0.0;
-  msg.info.origin.orientation.z = 0.0;
   msg.info.origin.orientation.w = 1.0;
 
+  // 初期化：すべて「未知 (-1)」
   msg.data.assign(width * height, -1);
 
+  // 2. 最初のパス：点群データから障害物(100)と床(0)をプロット
   for (const auto & point : cloud->points) {
-    double dx = point.x - x_min;
-    double dy = point.y - y_min;
+    int i = static_cast<int>((point.x - x_min) / map_resolution_);
+    int j = static_cast<int>((point.y - y_min) / map_resolution_);
 
-    if (dx < 0 || dy < 0) continue;
-
-    size_t i = static_cast<size_t>(dx / map_resolution_);
-    size_t j = static_cast<size_t>(dy / map_resolution_);
-
-    if (i < width && j < height) {
+    if (i >= 0 && i < (int)width && j >= 0 && j < (int)height) {
       size_t index = j * width + i;
-      if (index < msg.data.size() && point.z < 0.0) {
-        // RCLCPP_INFO(get_logger(), "point z: %lf", point.z);
-        if(msg.data[index]!=100){
-          msg.data[index] = 0; 
-        }
-      } 
-      else if(point.z >= 0.0){
-      //   // RCLCPP_INFO(get_logger(), "point z: %lf", point.z);
-         msg.data[index] = 100; 
+      // Z値に基づいて障害物か床かを判定（ここはお好みで調整してください）
+      if (point.z >= 0.0) {
+        msg.data[index] = 100; // 障害物
+      } else if (msg.data[index] != 100) {
+        msg.data[index] = 0;   // 床（通行可能）
       }
-      else {
-        RCLCPP_WARN(
-          get_logger(),
-          "Index out of bounds after safe casting: i=%zu, j=%zu, index=%zu, data.size=%zu",
-          i, j, index, msg.data.size());
-      }
-    } else {
-      RCLCPP_WARN(get_logger(), "Invalid index range: i=%zu, j=%zu (width=%zu, height=%zu)", i, j, width, height);
     }
   }
 
-  RCLCPP_INFO(get_logger(), "Map width: %u, height: %u", msg.info.width, msg.info.height);
-  RCLCPP_INFO(get_logger(), "Origin: x=%.2f, y=%.2f", x_min, y_min);
-  RCLCPP_INFO(get_logger(), "Map data size: %zu", msg.data.size());
+  // 3. 二番目のパス：未知領域(-1)の穴埋め処理
+  std::vector<int8_t> processed_data = msg.data;
+  int search_radius = 2; // 周囲何セル分を確認するか（2なら5x5の範囲）
+
+  for (int y = 0; y < (int)height; ++y) {
+    for (int x = 0; x < (int)width; ++x) {
+      size_t index = y * width + x;
+
+      if (msg.data[index] == -1) {
+        bool has_obstacle_nearby = false;
+        bool has_free_nearby = false;
+
+        for (int dy = -search_radius; dy <= search_radius; ++dy) {
+          for (int dx = -search_radius; dx <= search_radius; ++dx) {
+            int ny = y + dy;
+            int nx = x + dx;
+
+            if (nx >= 0 && nx < (int)width && ny >= 0 && ny < (int)height) {
+              int8_t neighbor_val = msg.data[ny * width + nx];
+              if (neighbor_val == 100) has_obstacle_nearby = true;
+              if (neighbor_val == 0)   has_free_nearby = true;
+            }
+            if (has_obstacle_nearby) break;
+          }
+          if (has_obstacle_nearby) break;
+        }
+
+        // 条件：近くに障害物がなく、かつ近くに「床」がある場合は通行可能(0)にする
+        if (!has_obstacle_nearby && has_free_nearby) {
+          processed_data[index] = 0;
+        }
+      }
+    }
+  }
+  msg.data = processed_data;
+
+  RCLCPP_INFO(get_logger(), "Map generated with gap filling. Width: %u, Height: %u", msg.info.width, msg.info.height);
 }
 
 void Pcd2PgmNode::applyTransform()
